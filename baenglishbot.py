@@ -1,372 +1,533 @@
-import telebot
-from telebot import types
+# main.py
 
-# Telegram token
+
+import os
+import time
+import json
+import random
+import tempfile
+import re
+from pathlib import Path
+
+
+try:
+    import telebot
+    from telebot import types
+except Exception as e:
+    raise RuntimeError("pyTelegramBotAPI o'rnatilmagan. Terminalda: pip install pyTelegramBotAPI")
+
+try:
+    from deep_translator import GoogleTranslator
+except Exception:
+    GoogleTranslator = None  
+
+
+try:
+    from gtts import gTTS
+except Exception:
+    gTTS = None
+
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+    REPORTLAB = True
+except Exception:
+    REPORTLAB = False
+
+
 TOKEN = "8454028246:AAHQSiqJbDHVF9HuwoPHidUibslzDHGT_nA"
+ADMIN_USERNAME = "sultanov190"
+DATA_FILE = "data.json"
+
 bot = telebot.TeleBot(TOKEN)
 
-# Umumiy YouTube playlist
-YOUTUBE_PLAYLIST = "https://www.youtube.com/playlist?list=PLkREkayoYCyI9KGsZ2TfeVccRv9qP0gl"
 
-# Foydalanuvchi ma'lumotlari
-user_data = {}
-
-# Beginner grammatika
-beginner_grammar = {
-    "1. Articles (a, an, the)": {
-        "description": "Artikllar narsalarni aniqlash uchun ishlatiladi.",
-        "explanation": "‘a’ undosh bilan, ‘an’ unli bilan, ‘the’ aniq narsalar uchun.",
-        "examples": [
-            ["A dog is cute.", "Bir it yoqimli."],
-            ["An apple is red.", "Bir olma qizil."],
-            ["The sun is bright.", "Quyosh yorqin."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "2. Plural Forms": {
-        "description": "Otlarni ko‘p holatda ifodalash.",
-        "explanation": "Ko‘p otlar ‘-s’ yoki ‘-es’ bilan yasaladi.",
-        "examples": [
-            ["One book, two books.", "Bir kitob, ikki kitob."],
-            ["One child, two children.", "Bir bola, ikki bola."],
-            ["One box, two boxes.", "Bir quti, ikki quti."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "3. Adjectives": {
-        "description": "Sifatlar narsalarni tasvirlaydi.",
-        "explanation": "Sifatlar otlardan oldin keladi.",
-        "examples": [
-            ["A big house.", "Katta uy."],
-            ["She is happy.", "U xursand."],
-            ["This is a beautiful flower.", "Bu chiroyli gul."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
+DEFAULT_DATA = {
+    "users": {},
+    "topics_links": {},
+    "pending_setlink": {},
+    "created_at": time.time()
 }
 
-# Intermediate grammatika
-intermediate_grammar = {
-    "1. Conditional Sentences": {
-        "description": "Shart gaplar.",
-        "explanation": "Zero: haqiqatlar (If + Present, Present). First: kelajak (If + Present, will + V1).",
-        "examples": [
-            ["If you heat water, it boils.", "Suvni isitsangiz, qaynaydi."],
-            ["If it rains, I will stay home.", "Yomg‘ir yog‘sa, uyda qolaman."],
-            ["If I study, I pass.", "O‘qisam, o‘taman."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "2. Passive Voice": {
-        "description": "Passiv holat.",
-        "explanation": "Subject + to be + V3.",
-        "examples": [
-            ["The book is read by me.", "Kitob men tomonimdan o‘qiladi."],
-            ["The house was built.", "Uy qurildi."],
-            ["The cake will be eaten.", "Tort yeyiladi."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "3. Reported Speech": {
-        "description": "Bilvosita gap.",
-        "explanation": "Fe’l zamonlari o‘zgaradi (Present → Past).",
-        "examples": [
-            ["She said, ‘I am tired.’", "U aytdi: ‘Men charchadim.’"],
-            ["He said he was tired.", "U charchaganini aytdi."],
-            ["They asked, ‘Are you coming?’", "Ular so‘radilar: ‘Kelyapsizmi?’"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
-}
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_DATA, f, ensure_ascii=False, indent=2)
+        return DEFAULT_DATA.copy()
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return DEFAULT_DATA.copy()
 
-# Advanced grammatika
-advanced_grammar = {
-    "1. Modal Verbs": {
-        "description": "Modal fe’llar: ehtimollik, maslahat.",
-        "explanation": "‘might’ ehtimollik, ‘should’ maslahat uchun.",
-        "examples": [
-            ["She might come tomorrow.", "U ertaga kelishi mumkin."],
-            ["You should study harder.", "Qattiqroq o‘qishingiz kerak."],
-            ["He could have won.", "U yutishi mumkin edi."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "2. Inversion": {
-        "description": "So‘z tartibini ta’kidlash uchun o‘zgartirish.",
-        "explanation": "Ega va fe’l o‘rni almashadi.",
-        "examples": [
-            ["Never have I seen such beauty.", "Bunday go‘zallikni ko‘rmaganman."],
-            ["Only then did he understand.", "Faqat o‘shanda tushundi."],
-            ["Had I known, I would have helped.", "Bilsam, yordam bergan bo‘lardim."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "3. Subjunctive Mood": {
-        "description": "Faraziy holatlar uchun.",
-        "explanation": "Orzu, faraz yoki talab uchun ishlatiladi.",
-        "examples": [
-            ["I wish I were taller.", "Balandroq bo‘lsam edi."],
-            ["It’s vital that she be here.", "Uning bu yerda bo‘lishi muhim."],
-            ["If he were here, we’d talk.", "U bu yerda bo‘lsa, gaplashardik."]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
-}
+def save_data():
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-# Beginner mavzular (1–10)
-beginner_topics = {
-    "1. Greetings and Introductions": {
-        "description": "Salomlashish va tanishish so‘zlari.",
-        "words": [
-            ["hello", "salom"], ["hi", "salom"], ["good morning", "xayrli tong"], ["good afternoon", "xayrli kun"], ["good evening", "xayrli kech"],
-            ["goodbye", "xayr"], ["please", "iltimos"], ["thank you", "rahmat"], ["sorry", "kechirasiz"], ["excuse me", "uzr"],
-            ["my name is", "mening ismim"], ["nice to meet you", "tanishganimdan xursandman"], ["how are you", "yaxshimisiz"], ["I'm fine", "men yaxshiman"], ["friend", "do‘st"]
-        ],
-        "video": "https://www.youtube.com/watch?v=7v2G99ZptmU"
-    },
-    "2. Numbers": {
-        "description": "Raqamlar va ularga bog‘liq so‘zlar.",
-        "words": [
-            ["one", "bir"], ["two", "ikki"], ["three", "uch"], ["four", "to‘rt"], ["five", "besh"],
-            ["six", "olti"], ["seven", "yetti"], ["eight", "sakkiz"], ["nine", "to‘qqiz"], ["ten", "o‘n"],
-            ["hundred", "yuz"], ["thousand", "ming"], ["million", "million"], ["count", "hisoblamoq"], ["number", "raqam"]
-        ],
-        "video": "https://www.youtube.com/watch?v=5r5z4vM3p8Y"
-    },
-    "3. Colors": {
-        "description": "Ranglar va tasvirlash so‘zlari.",
-        "words": [
-            ["red", "qizil"], ["blue", "ko‘k"], ["green", "yashil"], ["yellow", "sariq"], ["black", "qora"],
-            ["white", "oq"], ["pink", "pushti"], ["purple", "binafsha"], ["orange", "apelsin rangi"], ["brown", "jigarrang"],
-            ["gray", "kulrang"], ["dark", "qoramtir"], ["light", "och"], ["bright", "yorqin"], ["color", "rang"]
-        ],
-        "video": "https://www.youtube.com/watch?v=9v2G99ZptmU"
-    },
-    "4. Family": {
-        "description": "Oila a’zolari.",
-        "words": [
-            ["family", "oila"], ["mother", "ona"], ["father", "ota"], ["brother", "aka"], ["sister", "opa"],
-            ["grandmother", "buvim"], ["grandfather", "bobom"], ["aunt", "xola"], ["uncle", "amaki"], ["cousin", "amaki/bola"],
-            ["son", "o‘g‘il"], ["daughter", "qiz"], ["husband", "er"], ["wife", "xotin"], ["parent", "ota-ona"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "5. Food and Drinks": {
-        "description": "Ovqatlar va ichimliklar.",
-        "words": [
-            ["food", "ovqat"], ["drink", "ichimlik"], ["breakfast", "nonushta"], ["lunch", "tushlik"], ["dinner", "kechki ovqat"],
-            ["bread", "non"], ["rice", "guruch"], ["meat", "go‘sht"], ["fish", "baliq"], ["chicken", "tovuq"],
-            ["water", "suv"], ["milk", "sut"], ["tea", "choy"], ["coffee", "kofe"], ["juice", "sharbat"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "6. Clothes": {
-        "description": "Kiyimlar va moda.",
-        "words": [
-            ["clothes", "kiyim"], ["shirt", "ko‘ylak"], ["pants", "shim"], ["dress", "ko‘ylak (ayollar)"], ["jacket", "kurtka"],
-            ["shoes", "poyabzal"], ["hat", "shlyapa"], ["scarf", "sharfa"], ["gloves", "qo‘lqop"], ["socks", "paypoq"],
-            ["belt", "kamar"], ["jeans", "jins"], ["t-shirt", "futbolka"], ["wear", "kiymoq"], ["fashion", "moda"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "7. House and Furniture": {
-        "description": "Uy va mebellar.",
-        "words": [
-            ["house", "uy"], ["room", "xona"], ["kitchen", "oshxona"], ["bedroom", "yotoqxona"], ["bathroom", "vanna xonasi"],
-            ["table", "stol"], ["chair", "stul"], ["bed", "karavot"], ["sofa", "divan"], ["wardrobe", "shkaf"],
-            ["window", "deraza"], ["door", "eshik"], ["carpet", "gilam"], ["lamp", "chiroq"], ["mirror", "oyna"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "8. Daily Activities": {
-        "description": "Kundalik faoliyatlar.",
-        "words": [
-            ["wake up", "uyg‘onmoq"], ["get up", "turmoq"], ["brush teeth", "tish yuvmoq"], ["take a shower", "dush qilmoq"], ["get dressed", "kiyinish"],
-            ["eat breakfast", "nonushta qilmoq"], ["study", "o‘qimoq"], ["work", "ishlamoq"], ["relax", "dam olmoq"], ["watch TV", "televizor ko‘rmoq"],
-            ["read", "o‘qimoq"], ["write", "yozmoq"], ["sleep", "uxlamoq"], ["eat", "yemoq"], ["walk", "yurmoq"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "9. Weather": {
-        "description": "Ob-havo so‘zlari.",
-        "words": [
-            ["weather", "ob-havo"], ["sunny", "quyoshli"], ["cloudy", "bulutli"], ["rainy", "yomg‘irli"], ["windy", "shamolli"],
-            ["hot", "issiq"], ["cold", "sovuq"], ["warm", "iliq"], ["rain", "yomg‘ir"], ["snow", "qor"],
-            ["wind", "shamol"], ["cloud", "bulut"], ["sun", "quyosh"], ["storm", "bo‘ron"], ["temperature", "harorat"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    },
-    "10. Animals": {
-        "description": "Hayvonlar so‘zlari.",
-        "words": [
-            ["animal", "hayvon"], ["dog", "it"], ["cat", "mushuk"], ["bird", "qush"], ["fish", "baliq"],
-            ["horse", "ot"], ["cow", "sigir"], ["sheep", "qo‘y"], ["lion", "sher"], ["tiger", "yo‘lbars"],
-            ["elephant", "fil"], ["monkey", "maymun"], ["bear", "ayiq"], ["pet", "uy hayvoni"], ["zoo", "hayvonot bog‘i"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
-}
+data = load_data()
 
-# Intermediate mavzular
-intermediate_topics = {
-    "1. Daily Routines": {
-        "description": "Kundalik ishlarni tasvirlash.",
-        "words": [
-            ["wake up", "uyg‘onmoq"], ["get up", "turmoq"], ["brush teeth", "tish yuvmoq"], ["take a shower", "dush qilmoq"], ["get dressed", "kiyinish"],
-            ["eat breakfast", "nonushta qilmoq"], ["go to work", "ishga ketmoq"], ["study", "o‘qimoq"], ["exercise", "mashq qilmoq"], ["relax", "dam olmoq"],
-            ["watch TV", "televizor ko‘rmoq"], ["read a book", "kitob o‘qimoq"], ["go to bed", "yotmoq"], ["schedule", "jadval"], ["habit", "odat"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
-}
 
-# Advanced mavzular
-advanced_topics = {
-    "1. Business English": {
-        "description": "Biznes muhitida so‘zlar.",
-        "words": [
-            ["business", "biznes"], ["company", "kompaniya"], ["client", "mijoz"], ["contract", "shartnoma"], ["meeting", "uchrashuv"],
-            ["presentation", "taqdimot"], ["negotiation", "muzokara"], ["deal", "kelishuv"], ["profit", "foyda"], ["loss", "zarar"],
-            ["market", "bozor"], ["strategy", "strategiya"], ["goal", "maqsad"], ["project", "loyiha"], ["deadline", "muddat"]
-        ],
-        "video": YOUTUBE_PLAYLIST
-    }
-}
+def ensure_user(chat_id, username=None):
+    key = str(chat_id)
+    if key not in data["users"]:
+        data["users"][key] = {
+            "username": username or "",
+            "level": "beginner",
+            "points": 0,
+            "quizzes": [],
+            "topic_idx": 0
+        }
+        save_data()
+    else:
+        if username and data["users"][key].get("username") != username:
+            data["users"][key]["username"] = username
+            save_data()
+    return data["users"][key]
 
-# Inline tugmalar
-def create_level_buttons():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Beginner", callback_data="level_beginner"))
-    markup.add(types.InlineKeyboardButton("Intermediate", callback_data="level_intermediate"))
-    markup.add(types.InlineKeyboardButton("Advanced", callback_data="level_advanced"))
-    return markup
+def is_admin(user):
+    return getattr(user, "username", "") == ADMIN_USERNAME
 
-def create_category_buttons():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Grammatika", callback_data="category_grammar"))
-    markup.add(types.InlineKeyboardButton("So‘zlar", callback_data="category_words"))
-    return markup
+def detect_language(text: str) -> str:
+    
+    if re.search(r"[а-яА-ЯёЁғқўҳҒҚЎҲ]", text):
+        return "uz"
+    
+    latin_chars = sum(1 for ch in text if ch.isalpha() and ch.isascii())
+    if latin_chars >= max(1, len(text) / 2):
+        return "en"
+    return "en"
 
-def create_topic_buttons(topics):
-    markup = types.InlineKeyboardMarkup()
-    for topic in topics:
-        markup.add(types.InlineKeyboardButton(topic, callback_data=f"topic_{topic}"))
-    return markup
+def auto_translate(text: str):
+    if GoogleTranslator is None:
+        return None
+    try:
+        lang = detect_language(text)
+        if lang == "uz":
+            return GoogleTranslator(source='uz', target='en').translate(text)
+        else:
+            return GoogleTranslator(source='en', target='uz').translate(text)
+    except Exception:
+        return None
 
-def create_grammar_buttons(grammar):
-    markup = types.InlineKeyboardMarkup()
-    for topic in grammar:
-        markup.add(types.InlineKeyboardButton(topic, callback_data=f"grammar_{topic}"))
-    return markup
+def tts_send(chat_id, text, lang='en'):
+    if gTTS is None:
+        bot.send_message(chat_id, "gTTS o'rnatilmagan. Terminalda: pip install gtts")
+        return
+    try:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        tmp.close()
+        gTTS(text=text, lang=lang).save(tmp.name)
+        with open(tmp.name, "rb") as audio:
+            bot.send_audio(chat_id, audio)
+        os.unlink(tmp.name)
+    except Exception as e:
+        bot.send_message(chat_id, f"TTS xatosi: {e}")
 
-# Start komandasi
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Salom! Ingliz tilini o‘rganish darajasini tanlang:", reply_markup=create_level_buttons())
+def generate_vocab_file(level: str, vocab_list):
+    fname = f"{level}_vocab"
+    if REPORTLAB:
+        pdf_name = fname + ".pdf"
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVuSans", "DejaVuSans.ttf"))
+            font_name = "DejaVuSans"
+        except Exception:
+            font_name = "Helvetica"
+        c = canvas.Canvas(pdf_name, pagesize=A4)
+        width, height = A4
+        c.setFont(font_name, 12)
+        y = height - 40
+        c.drawString(40, y, f"{level.capitalize()} Vocabulary ({len(vocab_list)} items)")
+        y -= 30
+        for i, (eng, uz) in enumerate(vocab_list, 1):
+            line = f"{i}. {eng} — {uz}"
+            if y < 60:
+                c.showPage()
+                c.setFont(font_name, 12)
+                y = height - 40
+            c.drawString(40, y, line)
+            y -= 14
+        c.save()
+        return pdf_name
+    else:
+        txt_name = fname + ".txt"
+        with open(txt_name, "w", encoding="utf-8") as f:
+            f.write(f"{level.capitalize()} Vocabulary ({len(vocab_list)} items)\n\n")
+            for i, (eng, uz) in enumerate(vocab_list, 1):
+                f.write(f"{i}. {eng} — {uz}\n")
+        return txt_name
 
-# Callback query handler
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    user_id = call.from_user.id
 
-    if call.data.startswith("level_"):
-        level = call.data.split("_")[1]
-        user_data[user_id] = {"level": level}
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "Nega ingliz tilini o‘rganmoqchisiz? Sababingizni yozing:")
-        bot.register_next_step_handler(call.message, save_reason)
+BEGINNER_TOPICS = [
+    ("1. To be (am/is/are)", "Be fe'li: hozirgi holatni bildiradi.", ["I am a student.", "She is happy."]),
+    ("2. Present Simple", "Odatiy, takroriy harakatlar uchun.", ["I go to school every day.", "He works at a bank."]),
+    ("3. Present Continuous", "Hozir bo'layotgan harakatlar (am/is/are + V-ing).", ["I am studying now.", "They are playing."]),
+    ("4. Past Simple", "O'tgan zamon (V2 yoki -ed).", ["I visited yesterday.", "She watched TV."]),
+    ("5. Future (will / going to)", "Kelajakni ifodalash.", ["I will call you.", "I am going to travel."]),
+    ("6. Articles (a/an/the)", "A/An (noaniq), The (ma'lum).", ["A cat, an apple, the sun."]),
+    ("7. Plural nouns", "Ko'plik hosil qilish: -s/-es/-ies.", ["One book, two books."]),
+    ("8. Wh- questions", "What/Where/When/Who/Why/How.", ["What is your name?", "Where do you live?"]),
+    ("9. Prepositions of place", "in/on/at/under/next to.", ["The book is on the table."]),
+    ("10. Common adjectives", "Sifatlar: big, small, happy, sad.", ["She is beautiful.", "It is big."])
+]
 
-    elif call.data.startswith("category_"):
-        category = call.data.split("_")[1]
-        level = user_data.get(user_id, {}).get("level")
-        if not level:
-            bot.answer_callback_query(call.id)
-            bot.send_message(call.message.chat.id, "Iltimos, avval darajani tanlang (/start).")
-            return
-        bot.answer_callback_query(call.id)
-        
-        if category == "grammar":
-            if level == "beginner":
-                bot.send_message(call.message.chat.id, "Beginner grammatika:", reply_markup=create_grammar_buttons(beginner_grammar))
-            elif level == "intermediate":
-                bot.send_message(call.message.chat.id, "Intermediate grammatika:", reply_markup=create_grammar_buttons(intermediate_grammar))
-            elif level == "advanced":
-                bot.send_message(call.message.chat.id, "Advanced grammatika:", reply_markup=create_grammar_buttons(advanced_grammar))
-            else:
-                bot.send_message(call.message.chat.id, "Noto‘g‘ri daraja tanlandi. /start bilan qayta boshlang.")
-        
-        elif category == "words":
-            if level == "beginner":
-                bot.send_message(call.message.chat.id, "Beginner mavzulari:", reply_markup=create_topic_buttons(beginner_topics))
-            elif level == "intermediate":
-                bot.send_message(call.message.chat.id, "Intermediate mavzulari:", reply_markup=create_topic_buttons(intermediate_topics))
-            elif level == "advanced":
-                bot.send_message(call.message.chat.id, "Advanced mavzulari:", reply_markup=create_topic_buttons(advanced_topics))
-            else:
-                bot.send_message(call.message.chat.id, "Noto‘g‘ri daraja tanlandi. /start bilan qayta boshlang.")
+INTERMEDIATE_TOPICS = [
+    ("1. Present Perfect", "Have/has + V3: o'tmishdan hozirga ta'siri.", ["I have seen that movie."]),
+    ("2. Modal verbs (should/must/might)", "Maslahat, majburiyat, ehtimollik.", ["You should study.", "He must come."]),
+    ("3. Passive voice (intro)", "be + V3: qilinayotgan harakatga e'tibor.", ["The letter was sent."]),
+    ("4. Conditionals (Type 1 & 2 intro)", "Agar ... bo'lsa ...", ["If it rains, I will stay home."]),
+    ("5. Phrasal verbs (common)", "Look after, give up, take off.", ["She gave up smoking."])
+]
 
-    elif call.data.startswith("topic_"):
-        topic = call.data.replace("topic_", "")
-        level = user_data.get(user_id, {}).get("level")
-        if not level:
-            bot.answer_callback_query(call.id)
-            bot.send_message(call.message.chat.id, "Iltimos, avval darajani tanlang (/start).")
-            return
-        bot.answer_callback_query(call.id)
-        
+ADVANCED_TOPICS = [
+    ("1. Mixed conditionals", "Murakkab conditional turlari va ularning tahlili.", ["If I had studied, I would be successful now."]),
+    ("2. Causatives (have/get sth done)", "Boshqadan ish bajarilishini ifodalash.", ["I had my car repaired."]),
+    ("3. Inversion & emphasis", "Emphasis uchun strukturani o'zgartirish.", ["Never have I seen such beauty."]),
+    ("4. Advanced phrasal verbs & idioms", "Murakkab idiomatik ifodalar.", ["Break the ice, come up with."]),
+    ("5. Academic linking words", "Therefore, however, moreover for coherence.", ["Furthermore, the results show..."])
+]
+
+BASE_BEGINNER_VOCAB = [("apple","olma"),("book","kitob"),("pen","qalam"),("chair","stul"),("table","stol"),
+                       ("school","maktab"),("teacher","o'qituvchi"),("student","talaba"),("water","suv"),("food","ovqat"),
+                       ("dog","it"),("cat","mushuk"),("house","uy"),("car","mashina"),("road","yo'l")]
+
+BASE_INTERMEDIATE_VOCAB = [("opportunity","imkoniyat"),("experience","tajriba"),("responsibility","mas'uliyat"),
+                           ("develop","rivojlantirmoq"),("challenge","qiyinchilik")]
+
+BASE_ADVANCED_VOCAB = [("comprehensive","to'liq qamrovli"),("nuance","noziklik"),("meticulous","sinchkov")]
+
+def expand_vocab(base_pairs, target_count):
+    vocab = []
+    i = 0
+    while len(vocab) < target_count:
+        eng, uz = base_pairs[i % len(base_pairs)]
+        occ = sum(1 for e,_ in vocab if e == eng)
+        if occ == 0:
+            vocab.append((eng, uz))
+        else:
+            vocab.append((f"{eng}{occ+1}", uz))
+        i += 1
+    return vocab
+
+BEGINNER_VOCAB = expand_vocab(BASE_BEGINNER_VOCAB, 300)
+INTERMEDIATE_VOCAB = expand_vocab(BASE_INTERMEDIATE_VOCAB, 200)
+ADVANCED_VOCAB = expand_vocab(BASE_ADVANCED_VOCAB, 100)
+
+
+def main_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("🌐 Tarjima", "🔊 Talaffuz")
+    kb.add("📘 Grammatika", "📚 Lug‘atlar")
+    kb.add("🧠 Quiz", "🎧 Listening")
+    kb.add("📅 Daily word", "📊 Profile")
+    return kb
+
+def grammar_level_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("🟢 Beginner", "🟡 Intermediate", "🔴 Advanced")
+    kb.add("🔙 Orqaga")
+    return kb
+
+def vocab_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("Beginner vocab (PDF/TXT)", "Intermediate vocab (PDF/TXT)")
+    kb.add("Advanced vocab (PDF/TXT)", "🔙 Orqaga")
+    return kb
+
+
+@bot.message_handler(commands=['start','help'])
+def cmd_start(message):
+    ensure_user(message.chat.id, getattr(message.from_user, "username", ""))
+    bot.send_message(
+        message.chat.id,
+        "👋 Assalomu alaykum! Ingliz tili o‘rganish botiga xush kelibsiz.\n"
+        "Menyu orqali bo‘limni tanlang yoki bevosita yozing — men avtomatik tarjima qilaman.",
+        reply_markup=main_keyboard()
+    )
+
+@bot.message_handler(func=lambda m: m.text == "🌐 Tarjima")
+def manual_translate_prompt(message):
+    msg = bot.send_message(message.chat.id, "✍️ Tarjima qilinsin deb xohlagan matnni kiriting:")
+    bot.register_next_step_handler(msg, manual_translate_step)
+
+def manual_translate_step(message):
+    txt = message.text.strip()
+    tr = auto_translate(txt)
+    if tr:
+        bot.send_message(message.chat.id, f"🔁 Tarjima:\n{tr}")
+    else:
+        bot.send_message(message.chat.id, "Tarjima imkoniyati mavjud emas yoki xatolik yuz berdi.")
+    bot.send_message(message.chat.id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+
+@bot.message_handler(func=lambda m: m.text == "🔊 Talaffuz")
+def tts_prompt(message):
+    msg = bot.send_message(message.chat.id, "🔈 Talaffuz qilinadigan matnni yuboring:")
+    bot.register_next_step_handler(msg, handle_tts)
+
+def handle_tts(message):
+    txt = message.text.strip()
+    lang = 'en' if detect_language(txt) == 'en' else 'uz'
+    tts_send(message.chat.id, txt, lang=lang)
+    bot.send_message(message.chat.id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+
+@bot.message_handler(func=lambda m: m.text == "📘 Grammatika")
+def grammar_menu(message):
+    bot.send_message(message.chat.id, "Darajani tanlang:", reply_markup=grammar_level_keyboard())
+
+@bot.message_handler(func=lambda m: m.text in ["🟢 Beginner","🟡 Intermediate","🔴 Advanced"])
+def grammar_level_selected(message):
+    text = message.text
+    if text == "🟢 Beginner":
+        topics = BEGINNER_TOPICS; level = "beginner"
+    elif text == "🟡 Intermediate":
+        topics = INTERMEDIATE_TOPICS; level = "intermediate"
+    else:
+        topics = ADVANCED_TOPICS; level = "advanced"
+    kb = types.InlineKeyboardMarkup()
+    for idx, (title, _, _) in enumerate(topics):
+        short_title = title.split(". ",1)[1] if ". " in title else title
+        kb.add(types.InlineKeyboardButton(f"{idx+1}. {short_title}", callback_data=f"topic|{level}|{idx}"))
+    kb.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="grammar_back"))
+    bot.send_message(message.chat.id, f"📘 {text} mavzulari:", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("topic|"))
+def callback_show_topic(call):
+    try:
+        parts = call.data.split("|")
+        _, level, idx_str = parts
+        idx = int(idx_str)
         if level == "beginner":
-            data = beginner_topics.get(topic)
+            topics = BEGINNER_TOPICS
         elif level == "intermediate":
-            data = intermediate_topics.get(topic)
-        elif level == "advanced":
-            data = advanced_topics.get(topic)
+            topics = INTERMEDIATE_TOPICS
         else:
-            bot.send_message(call.message.chat.id, "Noto‘g‘ri daraja tanlandi. /start bilan qayta boshlang.")
-            return
-        
-        if data:
-            response = f"**Mavzu: {topic}**\n\n**Tavsif**: {data['description']}\n\n**So‘zlar**:\n"
-            for word, translation in data['words']:
-                response += f"- {word} — {translation}\n"
-            response += f"\n**Video**: {data['video']}"
-            bot.send_message(call.message.chat.id, response)
+            topics = ADVANCED_TOPICS
+        title, rule, examples = topics[idx]
+        examples_text = "\n".join(f"• {e}" for e in examples)
+        kb = types.InlineKeyboardMarkup()
+        key = f"{level}_{idx}"
+        ylink = data.get("topics_links", {}).get(key)
+        if ylink:
+            kb.add(types.InlineKeyboardButton("🎬 YouTube darsini ko'rish", url=ylink))
         else:
-            bot.send_message(call.message.chat.id, f"Mavzu '{topic}' topilmadi. Boshqa mavzuni tanlang.")
-
-    elif call.data.startswith("grammar_"):
-        topic = call.data.replace("grammar_", "")
-        level = user_data.get(user_id, {}).get("level")
-        if not level:
-            bot.answer_callback_query(call.id)
-            bot.send_message(call.message.chat.id, "Iltimos, avval darajani tanlang (/start).")
-            return
+            kb.add(types.InlineKeyboardButton("🎬 YouTube linki yo'q", callback_data="no_youtube"))
+        kb.add(types.InlineKeyboardButton("🔧 (Admin) Link qo'yish", callback_data=f"setlink|{level}|{idx}"))
+        kb.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="grammar_back"))
+        bot.send_message(call.message.chat.id, f"📚 *{title}*\n\n📖 *Qoidasi:* {rule}\n\n🧩 *Misollar:*\n{examples_text}", parse_mode="Markdown", reply_markup=kb)
         bot.answer_callback_query(call.id)
-        
-        if level == "beginner":
-            data = beginner_grammar.get(topic)
-        elif level == "intermediate":
-            data = intermediate_grammar.get(topic)
-        elif level == "advanced":
-            data = advanced_grammar.get(topic)
-        else:
-            bot.send_message(call.message.chat.id, "Noto‘g‘ri daraja tanlandi. /start bilan qayta boshlang.")
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"Xato: {e}")
+
+@bot.callback_query_handler(func=lambda call: call.data == "no_youtube")
+def callback_no_youtube(call):
+    bot.answer_callback_query(call.id, "Bu mavzu uchun YouTube linki hali qo‘yilmagan. Agar admin bo‘lsangiz, 'Link qo‘yish' tugmasini bosing.")
+
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("setlink|"))
+def callback_setlink(call):
+    try:
+        parts = call.data.split("|")
+        _, level, idx_str = parts
+        idx = int(idx_str)
+        user = call.from_user
+        if not is_admin(user):
+            bot.answer_callback_query(call.id, "Bu amal faqat admin uchun.")
             return
-        
-        if data:
-            response = f"**Grammatika: {topic}**\n\n**Tavsif**: {data['description']}\n\n**Tushuntirish**: {data['explanation']}\n\n**Misollar**:\n"
-            for eng, uzb in data['examples']:
-                response += f"- {eng} — {uzb}\n"
-            response += f"\n**Video**: {data['video']}"
-            bot.send_message(call.message.chat.id, response)
+        data.setdefault("pending_setlink", {})[str(user.id)] = {"level": level, "idx": idx}
+        save_data()
+        bot.send_message(call.message.chat.id, "🔧 Admin: mavzu uchun YouTube linkini yuboring (http/https bilan).")
+        bot.answer_callback_query(call.id, "Link yuborishni kuting.")
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"Xato: {e}")
+
+@bot.message_handler(func=lambda m: str(m.from_user.id) in data.get("pending_setlink", {}))
+def handle_admin_link(message):
+    uid = str(message.from_user.id)
+    pending = data.get("pending_setlink", {}).get(uid)
+    if not pending:
+        bot.send_message(message.chat.id, "Kutilayotgan holat topilmadi.")
+        return
+    if not is_admin(message.from_user):
+        bot.send_message(message.chat.id, "Bu amal faqat admin uchun.")
+        data["pending_setlink"].pop(uid, None)
+        save_data()
+        return
+    url = message.text.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        bot.send_message(message.chat.id, "Iltimos to'liq URL yuboring (http/https bilan).")
+        return
+    key = f"{pending['level']}_{pending['idx']}"
+    data.setdefault("topics_links", {})[key] = url
+    data["pending_setlink"].pop(uid, None)
+    save_data()
+    bot.send_message(message.chat.id, f"✅ Link saqlandi: {url}")
+
+@bot.callback_query_handler(func=lambda call: call.data == "grammar_back")
+def callback_grammar_back(call):
+    bot.send_message(call.message.chat.id, "🔙 Darajani tanlang:", reply_markup=grammar_level_keyboard())
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(func=lambda m: m.text == "📚 Lug‘atlar")
+def vocab_menu(message):
+    bot.send_message(message.chat.id, "Lug'at faylini tanlang:", reply_markup=vocab_keyboard())
+
+@bot.message_handler(func=lambda m: m.text in ["Beginner vocab (PDF/TXT)","Intermediate vocab (PDF/TXT)","Advanced vocab (PDF/TXT)"])
+def send_vocab_file(message):
+    text = message.text
+    if text.startswith("Beginner"):
+        level = "beginner"; vocab_list = BEGINNER_VOCAB
+    elif text.startswith("Intermediate"):
+        level = "intermediate"; vocab_list = INTERMEDIATE_VOCAB
+    else:
+        level = "advanced"; vocab_list = ADVANCED_VOCAB
+    bot.send_message(message.chat.id, f"📥 {level.capitalize()} lug'at fayli yaratilmoqda... Iltimos kuting.")
+    fname = generate_vocab_file(level, vocab_list)
+    with open(fname, "rb") as f:
+        bot.send_document(message.chat.id, f)
+    try:
+        os.remove(fname)
+    except:
+        pass
+    bot.send_message(message.chat.id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+
+@bot.message_handler(func=lambda m: m.text == "📅 Daily word")
+def daily_word(message):
+    eng, uz = random.choice(BEGINNER_VOCAB)
+    bot.send_message(message.chat.id, f"📅 Bugungi so'z: *{eng}* — {uz}", parse_mode="Markdown")
+    if gTTS:
+        try:
+            tts_send(message.chat.id, eng, lang='en')
+        except:
+            pass
+    bot.send_message(message.chat.id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+
+@bot.message_handler(func=lambda m: m.text == "📊 Profile")
+def profile(message):
+    ensure_user(message.chat.id, getattr(message.from_user, "username", ""))
+    u = data["users"].get(str(message.chat.id), {})
+    bot.send_message(message.chat.id, f"👤 @{u.get('username','')}\nLevel: {u.get('level','beginner')}\nPoints: {u.get('points',0)}\nQuizlar: {len(u.get('quizzes',[]))}", reply_markup=main_keyboard())
+
+
+LISTENING_TESTS = {
+    "What fruit is red and crunchy?": "apple",
+    "Who teaches students?": "teacher",
+    "What do you do at night to rest?": "sleep"
+}
+
+@bot.message_handler(func=lambda m: m.text == "🎧 Listening")
+def listening_start(message):
+    q, a = random.choice(list(LISTENING_TESTS.items()))
+    msg = bot.send_message(message.chat.id, f"🎧 Savol: {q}\nJavobni yozing:")
+    # register next step
+    bot.register_next_step_handler(msg, lambda m, correct=a: check_listening(m, correct))
+
+def check_listening(message, correct):
+    if message.text.strip().lower() == correct.lower():
+        bot.send_message(message.chat.id, "✅ To'g'ri!")
+    else:
+        bot.send_message(message.chat.id, f"❌ Noto'g'ri. To'g'ri javob: {correct}")
+    bot.send_message(message.chat.id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+
+# Quiz
+QUIZ_POOL_BEGINNER = [
+    {"q":"What is the English for 'olma'?", "options":["apple","banana","orange"], "a":"apple"},
+    {"q":"Choose correct: She ___ a teacher.", "options":["is","are","am"], "a":"is"},
+    {"q":"What is the plural of 'book'?", "options":["books","bookes","bok"], "a":"books"}
+]
+QUIZ_POOL_INTERMEDIATE = [
+    {"q":"Complete: I have ___ my homework.", "options":["done","do","did"], "a":"done"}
+]
+QUIZ_POOL_ADVANCED = [
+    {"q":"Which is noun from 'decide'?", "options":["decision","decidable","decisive"], "a":"decision"}
+]
+
+@bot.message_handler(func=lambda m: m.text == "🧠 Quiz")
+def start_quiz(message):
+    ensure_user(message.chat.id, getattr(message.from_user, "username", ""))
+    u = data["users"].get(str(message.chat.id), {})
+    level = u.get("level", "beginner")
+    if level == "beginner":
+        pool = QUIZ_POOL_BEGINNER
+    elif level == "intermediate":
+        pool = QUIZ_POOL_INTERMEDIATE
+    else:
+        pool = QUIZ_POOL_ADVANCED
+    questions = random.sample(pool, min(5, len(pool)))
+    uid = str(message.chat.id)
+    data["users"][uid]["current_quiz"] = {"questions": questions, "pos": 0, "score": 0}
+    save_data()
+    send_quiz_question(message.chat.id)
+
+def send_quiz_question(chat_id):
+    uid = str(chat_id)
+    user = data["users"].get(uid)
+    if not user or "current_quiz" not in user:
+        bot.send_message(chat_id, "Quiz topilmadi.")
+        return
+    state = user["current_quiz"]
+    pos = state["pos"]
+    if pos >= len(state["questions"]):
+        score = state["score"]; total = len(state["questions"])
+        bot.send_message(chat_id, f"🏁 Quiz tugadi. Natija: {score}/{total}")
+        user.setdefault("quizzes", []).append({"score":score,"total":total,"time":time.time()})
+        user["points"] = user.get("points",0) + score*10
+        user.pop("current_quiz", None)
+        save_data()
+        bot.send_message(chat_id, "🔙 Asosiy menyu", reply_markup=main_keyboard())
+        return
+    q = state["questions"][pos]
+    kb = types.InlineKeyboardMarkup()
+    for i,opt in enumerate(q["options"]):
+        kb.add(types.InlineKeyboardButton(opt, callback_data=f"quiz|{uid}|{pos}|{i}"))
+    bot.send_message(chat_id, q["q"], reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith("quiz|"))
+def quiz_answer_callback(call):
+    try:
+        _, uid, pos_str, idx_str = call.data.split("|")
+        pos = int(pos_str); idx = int(idx_str)
+        user = data["users"].get(uid)
+        if not user or "current_quiz" not in user:
+            bot.answer_callback_query(call.id, "Quiz topilmadi.")
+            return
+        state = user["current_quiz"]
+        q = state["questions"][pos]
+        chosen = q["options"][idx]
+        correct = q["a"]
+        if chosen == correct:
+            state["score"] += 1
+            bot.answer_callback_query(call.id, "✅ To'g'ri!")
+            bot.send_message(call.message.chat.id, "✅ To'g'ri!")
         else:
-            bot.send_message(call.message.chat.id, f"Grammatika mavzusi '{topic}' topilmadi. Boshqa mavzuni tanlang.")
+            bot.answer_callback_query(call.id, f"❌ Noto'g'ri. To'g'ri: {correct}")
+            bot.send_message(call.message.chat.id, f"❌ Noto'g'ri. To'g'ri: {correct}")
+        state["pos"] += 1
+        data["users"][uid]["current_quiz"] = state
+        save_data()
+        send_quiz_question(int(uid))
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"Xato: {e}")
 
-# Sababni saqlash
-def save_reason(message):
-    user_id = message.from_user.id
-    user_data[user_id]["reason"] = message.text
-    bot.send_message(message.chat.id, f"Rahmat! Sababingiz: {message.text}\nO‘rganish turini tanlang:", reply_markup=create_category_buttons())
 
-# Botni ishga tushirish
-print("Bot ishga tushdi")
-bot.polling()
+@bot.message_handler(func=lambda m: True, content_types=['text'])
+def fallback_auto_translate(message):
+    tr = auto_translate(message.text.strip()) if GoogleTranslator is not None else None
+    if tr:
+        bot.send_message(message.chat.id, f"🔁 Tarjima:\n{tr}")
+        if detect_language(message.text.strip()) == "en":
+            try:
+                tts_send(message.chat.id, message.text.strip(), lang='en')
+            except:
+                pass
+        return
+    bot.send_message(message.chat.id, "Iltimos menyudan bo‘lim tanlang yoki 🌐 Tarjima tugmasini bosing.", reply_markup=main_keyboard())
+
+if __name__ == "__main__":
+    print("🤖 Bot ishga tushdi...")
+    try:
+        bot.polling(none_stop=True)
+    except KeyboardInterrupt:
+        print("Bot to‘xtatildi (KeyboardInterrupt).")
+    except Exception as e:
+        print("Bot xatosi:", e)
