@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 
 # Telegram token
-TOKEN = "8160649383:AAEFp2uRgEqp_hCuY46lv_WYwUOz0V5Eqz4"
+TOKEN = "8454028246:AAHQSiqJbDHVF9HuwoPHidUibslzDHGT_nA"
 bot = telebot.TeleBot(TOKEN)
 
 # Umumiy YouTube playlist
